@@ -2,7 +2,7 @@
 // Usage: node log-review.js <owner/repo> <pr-number> <mode>
 // Fetches PR metadata + latest Preflight review from GitHub, appends to data/reviews.json.
 
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const fs   = require('fs');
 const path = require('path');
 
@@ -12,8 +12,17 @@ if (!repo || !pr || !mode) {
   process.exit(1);
 }
 
+if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+  console.error(`Invalid repo format: ${repo}`);
+  process.exit(1);
+}
+if (!/^\d+$/.test(pr)) {
+  console.error(`Invalid PR number: ${pr}`);
+  process.exit(1);
+}
+
 function gh(endpoint) {
-  return JSON.parse(execSync(`gh api ${endpoint}`, { encoding: 'utf-8' }));
+  return JSON.parse(execFileSync('gh', ['api', endpoint], { encoding: 'utf-8' }));
 }
 
 const prData  = gh(`repos/${repo}/pulls/${pr}`);
@@ -43,7 +52,12 @@ const entry = {
 };
 
 const dataFile = path.join(__dirname, '..', 'data', 'reviews.json');
-const log = JSON.parse(fs.readFileSync(dataFile, 'utf-8'));
+let log = [];
+try {
+  log = JSON.parse(fs.readFileSync(dataFile, 'utf-8'));
+} catch {
+  // file missing or malformed — start fresh
+}
 log.unshift(entry);
 fs.writeFileSync(dataFile, JSON.stringify(log, null, 2) + '\n');
 
