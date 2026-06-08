@@ -12,6 +12,7 @@ const GITHUB_API  = 'https://api.github.com';
 const MODEL       = 'claude-sonnet-4-6';
 const MAX_FILES   = 10;
 const MAX_LINES   = 500;   // skip files with more changed lines than this
+const DRY_RUN     = process.env.DRY_RUN === 'true';
 
 // ── File filters ─────────────────────────────────────────────────────────────
 
@@ -241,12 +242,12 @@ async function main() {
     }
 
     if (skipped.length > 0) {
-      await postComment(
-        `## Preflight: Files Skipped\n\n` +
+      const msg = `Files skipped:\n${skipped.map(s => `  - ${s}`).join('\n')}`;
+      if (DRY_RUN) console.log(`[preflight] ${msg}`);
+      else await postComment(`## Preflight: Files Skipped\n\n` +
         `The following files exceeded review limits and were not checked:\n\n` +
         skipped.map(s => `- ${s}`).join('\n') +
-        `\n\n> Adjust \`.reviewbot.yaml\` to change thresholds.`
-      );
+        `\n\n> Adjust \`.reviewbot.yaml\` to change thresholds.`);
     }
 
     if (toReview.length === 0) {
@@ -301,8 +302,22 @@ async function main() {
     }
 
     // ── Step 7: post review ──────────────────────────────────────────────────
-    await postReview(findings, summaryBody);
-    console.log(`[preflight] Done — ${findings.length} finding(s)`);
+    if (DRY_RUN) {
+      console.log('\n' + summaryBody + '\n');
+      if (findings.length === 0) {
+        console.log('[preflight] No findings.');
+      } else {
+        findings.forEach(f => {
+          console.log(`\n[${f.severity.toUpperCase()}] ${f.file}:${f.line} — ${f.title}`);
+          console.log(f.body);
+          console.log(`Category: ${f.category}`);
+        });
+      }
+      console.log(`\n[preflight] Done — ${findings.length} finding(s) (dry run, nothing posted)`);
+    } else {
+      await postReview(findings, summaryBody);
+      console.log(`[preflight] Done — ${findings.length} finding(s)`);
+    }
 
   } catch (err) {
     // Fail silently: never block a PR due to a review bot error.
