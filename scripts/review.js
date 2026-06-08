@@ -147,9 +147,13 @@ function buildContextBlock(contexts) {
   ).join('\n\n---\n\n');
 }
 
+function stripFences(text) {
+  return text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+}
+
 async function runReview(contextBlock) {
   const raw = await callClaude(REVIEW_SYSTEM, `Review these PR changes:\n\n${contextBlock}`);
-  const parsed = JSON.parse(raw.trim());
+  const parsed = JSON.parse(stripFences(raw));
   return Array.isArray(parsed) ? parsed : [];
 }
 

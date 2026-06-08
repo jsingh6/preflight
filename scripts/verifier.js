@@ -38,7 +38,8 @@ async function verifyFindings(findings, contexts, callClaude) {
     `Findings to verify:\n${JSON.stringify(findings, null, 2)}\n\nCode context:\n${contextSummary}`;
 
   const raw = await callClaude(VERIFY_SYSTEM, user, 2048);
-  const verified = JSON.parse(raw.trim());
+  const stripped = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  const verified = JSON.parse(stripped);
   return Array.isArray(verified) ? verified : [];
 }
 
