@@ -14,7 +14,7 @@ fi
 
 # Pull a token from gh CLI — works for both public and private repos
 # as long as the user is authenticated with sufficient scope (repo).
-GITHUB_TOKEN=$(gh auth token)
+GITHUB_TOKEN=$(gh auth token) || { echo "Error: gh auth token failed. Run 'gh auth login' first."; exit 1; }
 
 SHA=$(gh api repos/"$REPO"/pulls/"$PR" --jq '.head.sha')
 

@@ -10,6 +10,15 @@ set -euo pipefail
 REPO="${1:?Usage: preflight-agent.sh owner/repo pr-number}"
 PR="${2:?Usage: preflight-agent.sh owner/repo pr-number}"
 
+if [[ ! "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+  echo "Error: invalid repo format '$REPO'. Expected owner/repo."
+  exit 1
+fi
+if [[ ! "$PR" =~ ^[0-9]+$ ]]; then
+  echo "Error: invalid PR number '$PR'."
+  exit 1
+fi
+
 if ! command -v claude &>/dev/null; then
   echo "Error: claude CLI not found. Install Claude Code: https://claude.ai/code"
   exit 1
