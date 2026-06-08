@@ -1,0 +1,34 @@
+# AI Code Review Bot — per-repo configuration
+# Copy this file to .reviewbot.yaml in your repo root to override defaults.
+# The workflow reads this file at runtime (future feature; current defaults shown below).
+
+review:
+  # Maximum number of files reviewed per PR (default: 10)
+  max_files: 10
+
+  # Skip files with more changed lines than this threshold (default: 500)
+  max_changed_lines: 500
+
+  # Severity levels that trigger inline PR comments.
+  # Week 1 recommendation: high + medium only. Add "low" after establishing
+  # a sentiment baseline with your team.
+  post_severities:
+    - high
+    - medium
+    # - low
+
+  # Extra glob patterns to exclude from review (in addition to built-in filters).
+  # Built-ins: **/vendor/**, *.generated.*, **/node_modules/**, package-lock.json,
+  #            go.sum, *.lock, *.pb.go, *_generated.go
+  skip_patterns:
+    - "**/*.min.js"
+    - "**/dist/**"
+    - "**/build/**"
+    - "**/__generated__/**"
+    - "**/migrations/**"
+
+# Opt entire path prefixes out of review (overrides everything above).
+ignore_paths:
+  - "docs/**"
+  - "*.md"
+  - "infra/**"
