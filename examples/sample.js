@@ -1,10 +1,8 @@
 'use strict';
 
-// Example: user lookup with a few subtle bugs for the AI reviewer to catch.
-
 async function getUser(db, userId) {
   const row = await db.query('SELECT * FROM users WHERE id = ?', [userId]);
-  // Bug 1: no null check — row could be undefined if user doesn't exist
+  if (!row) return null;
   return { name: row.name, email: row.email };
 }
 
@@ -18,7 +16,12 @@ async function processUsers(db, userIds) {
 }
 
 async function deleteUser(db, userId, requestingUserId) {
-  // Bug 2: no authorization check — any caller can delete any user
+  if (!requestingUserId) throw new Error('requestingUserId is required');
+  const requester = await getUser(db, requestingUserId);
+  if (!requester) throw new Error('Requesting user not found');
+  if (requestingUserId !== userId && !requester.isAdmin) {
+    throw new Error('Unauthorized: only admins can delete other users');
+  }
   await db.query('DELETE FROM users WHERE id = ?', [userId]);
   return { deleted: userId };
 }
