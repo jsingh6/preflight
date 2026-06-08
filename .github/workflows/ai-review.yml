@@ -1,4 +1,4 @@
-name: AI Code Review
+name: Preflight
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  ai-review:
+  preflight:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -22,7 +22,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Run AI review
+      - name: Run Preflight review
         timeout-minutes: 5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
