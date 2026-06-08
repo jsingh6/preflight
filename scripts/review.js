@@ -97,7 +97,7 @@ async function buildFileContexts(toReview) {
     try {
       content = await fetchBlob(f.sha);
     } catch (e) {
-      console.warn(`[ai-review] blob fetch failed for ${f.filename}: ${e.message}`);
+      console.warn(`[preflight] blob fetch failed for ${f.filename}: ${e.message}`);
     }
     return {
       filename:     f.filename,
@@ -147,9 +147,13 @@ function buildContextBlock(contexts) {
   ).join('\n\n---\n\n');
 }
 
+function stripFences(text) {
+  return text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+}
+
 async function runReview(contextBlock) {
   const raw = await callClaude(REVIEW_SYSTEM, `Review these PR changes:\n\n${contextBlock}`);
-  const parsed = JSON.parse(raw.trim());
+  const parsed = JSON.parse(stripFences(raw));
   return Array.isArray(parsed) ? parsed : [];
 }
 
@@ -208,7 +212,7 @@ async function postComment(body) {
 
 async function main() {
   if (!ANTHROPIC_KEY) {
-    console.warn('[ai-review] ANTHROPIC_API_KEY not set — skipping review');
+    console.warn('[preflight] ANTHROPIC_API_KEY not set — skipping review');
     return;
   }
 
@@ -238,7 +242,7 @@ async function main() {
 
     if (skipped.length > 0) {
       await postComment(
-        `## AI Review: Files Skipped\n\n` +
+        `## Preflight: Files Skipped\n\n` +
         `The following files exceeded review limits and were not checked:\n\n` +
         skipped.map(s => `- ${s}`).join('\n') +
         `\n\n> Adjust \`.reviewbot.yaml\` to change thresholds.`
@@ -246,7 +250,7 @@ async function main() {
     }
 
     if (toReview.length === 0) {
-      console.log('[ai-review] No eligible files to review');
+      console.log('[preflight] No eligible files to review');
       return;
     }
 
@@ -259,7 +263,7 @@ async function main() {
     try {
       rawFindings = await runReview(contextBlock);
     } catch (err) {
-      console.warn('[ai-review] Review call failed:', err.message);
+      console.warn('[preflight] Review call failed:', err.message);
     }
 
     // ── Step 4: verifier pass ────────────────────────────────────────────────
@@ -268,7 +272,7 @@ async function main() {
       try {
         findings = await verifyFindings(rawFindings, contexts);
       } catch (err) {
-        console.warn('[ai-review] Verifier failed, using raw findings:', err.message);
+        console.warn('[preflight] Verifier failed, using raw findings:', err.message);
       }
     }
 
@@ -276,7 +280,7 @@ async function main() {
     findings = guardLines(findings, contexts);
 
     // ── Step 6: PR summary (separate Claude call, same context) ─────────────
-    let summaryBody = '## AI Code Review\n\n_Summary unavailable._';
+    let summaryBody = '## Preflight Review\n\n_Summary unavailable._';
     try {
       const summaryText = await callClaude(
         'You are a senior engineer. In 3-5 sentences explain what this PR does and why, ' +
@@ -291,18 +295,18 @@ async function main() {
         : '**No bugs found** in the reviewed files.';
 
       summaryBody =
-        `## AI Code Review\n\n${summaryText.trim()}\n\n${findingSummary}`;
+        `## Preflight Review\n\n${summaryText.trim()}\n\n${findingSummary}`;
     } catch (err) {
-      console.warn('[ai-review] Summary call failed:', err.message);
+      console.warn('[preflight] Summary call failed:', err.message);
     }
 
     // ── Step 7: post review ──────────────────────────────────────────────────
     await postReview(findings, summaryBody);
-    console.log(`[ai-review] Done — ${findings.length} finding(s)`);
+    console.log(`[preflight] Done — ${findings.length} finding(s)`);
 
   } catch (err) {
     // Fail silently: never block a PR due to a review bot error.
-    console.warn('[ai-review] Unhandled error (PR not blocked):', err.message);
+    console.warn('[preflight] Unhandled error (PR not blocked):', err.message);
   }
 }
 

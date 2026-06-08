@@ -1,4 +1,4 @@
-# AI Code Review Bot
+# Preflight
 
 A GitHub Actions workflow that reviews every PR for real bugs using Claude. Inspired by Snap's CodePal.
 
