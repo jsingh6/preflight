@@ -24,3 +24,5 @@ PR_NUMBER="$PR" \
 PR_HEAD_SHA="$SHA" \
 DRY_RUN=true \
 node "$(dirname "$0")/review.js"
+
+node "$(dirname "$0")/log-review.js" "$REPO" "$PR" "api"

@@ -60,7 +60,11 @@ claude -p "You are Preflight, an automated code reviewer. Review GitHub PR $REPO
    Build the JSON payload with:
    - commit_id: the PR head SHA (fetch from gh api repos/$REPO/pulls/$PR --jq '.head.sha')
    - event: COMMENT
-   - body: 2-3 sentence summary of what the PR does, followed by a findings summary line
+   - body: MUST start with exactly '## Preflight Review', followed by a blank line,
+     then 2-3 sentences summarizing what the PR does, then a blank line,
+     then exactly one of these findings lines:
+       '**Findings:** N high, N medium, N low'   (if bugs found)
+       '**No bugs found** in the reviewed files.' (if none)
    - comments: array of inline findings (high + medium severity only)
      Each comment needs: path, line (new-file line number), side: RIGHT, body
 
@@ -71,7 +75,7 @@ claude -p "You are Preflight, an automated code reviewer. Review GitHub PR $REPO
 
    _Category: category_
 
-7. If no bugs are found, post the review with an empty comments array and note it in the body.
+7. If no bugs are found, post the review with an empty comments array.
 
 ## Rules
 - Only comment on lines present in the diff. Never flag unchanged lines.
@@ -80,3 +84,5 @@ claude -p "You are Preflight, an automated code reviewer. Review GitHub PR $REPO
 - If files were skipped due to filters, list them in the summary body." \
   --allowedTools "Bash" \
   --max-turns 30
+
+node "$(dirname "$0")/log-review.js" "$REPO" "$PR" "agent"
