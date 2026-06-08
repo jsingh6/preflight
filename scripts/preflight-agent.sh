@@ -54,14 +54,54 @@ claude -p "You are Preflight, an automated code reviewer. Review GitHub PR $REPO
 
 4. Study the diff patch for each file. Note exactly which line numbers in the new file were added or changed (lines starting with '+' in the patch, tracking the @@ hunk headers).
 
-5. Review only the changed lines for real bugs — not style, not formatting. Categories:
+5. Review only the changed lines for real bugs — not style, not formatting. Check every category below:
+
+   CORRECTNESS
    - null/nil dereference
-   - unhandled errors / ignored return values
-   - race conditions
-   - resource leaks (unclosed files, connections, goroutines)
-   - security issues (injection, path traversal, unvalidated input, auth bypass)
-   - logic errors / off-by-one
-   - type mismatches
+   - off-by-one in loop bounds or index math
+   - integer overflow/underflow in arithmetic or size calculations
+   - wrong boolean logic (flipped condition, missing else branch, incorrect &&/||)
+   - incorrect operator (= vs ==, reference vs value equality)
+   - data truncation or precision loss in type conversions
+   - dead/unreachable code that masks a missing case
+
+   ERROR HANDLING
+   - swallowed or ignored errors
+   - missing error propagation
+   - panic/throw on a recoverable error
+   - resources not released on the error path (missing defer/finally/close)
+   - no retry or fallback for transient failures
+
+   CONCURRENCY
+   - unsynchronized access to shared mutable state
+   - deadlock from improper lock ordering
+   - TOCTOU (check-then-act with a window for state change)
+   - operations that must be atomic but are not
+   - goroutine or thread leak (no exit condition)
+
+   RESOURCE MANAGEMENT
+   - unclosed files, DB connections, HTTP response bodies, or sockets
+   - missing timeout on HTTP calls, DB queries, or lock acquisition
+   - unbounded resource growth (no cap on goroutines, connections, or in-memory collections)
+
+   SECURITY
+   - SQL/command/LDAP injection
+   - path traversal
+   - SSRF (user-controlled URL fetched server-side)
+   - authentication bypass
+   - authorization bypass or missing privilege check
+   - hardcoded credentials or secrets
+   - sensitive data in logs, error messages, or URLs
+   - weak or misused crypto (MD5/SHA1 for security, ECB mode, hardcoded IV, weak key derivation)
+   - non-constant-time comparison of secrets
+   - open redirect
+   - unsafe deserialization
+
+   API & CONTRACTS
+   - incorrect use of a third-party API (wrong param order, missing required field)
+   - violated function precondition or postcondition
+   - missing input validation at a trust boundary
+   - loading an unbounded dataset without pagination
 
 6. Post a single PR review via:
    gh api repos/$REPO/pulls/$PR/reviews --method POST --input -
