@@ -1,6 +1,7 @@
 # Preflight
 
 <img width="200" height="200" alt="C _ PR check" src="https://github.com/user-attachments/assets/a6c9446f-53b3-4fbb-852b-271a9b84ed55" />
+
 A GitHub Actions workflow that reviews every PR for real bugs using Claude.
 
 ## What it does
