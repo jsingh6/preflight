@@ -1,0 +1,99 @@
+version: 1
+stack: python
+
+rules:
+  # ── Exception Handling ───────────────────────────────────────────
+  - id: preflight/python/bare-except
+    severity: high
+    description: >
+      bare `except:` clause catches BaseException including KeyboardInterrupt
+      and SystemExit. Always catch specific exception types.
+    example_violation: |
+      try:
+          risky()
+      except:       # catches everything including Ctrl+C
+          pass
+    example_fix: |
+      try:
+          risky()
+      except ValueError as e:
+          handle(e)
+
+  - id: preflight/python/swallowed-exception
+    severity: high
+    description: >
+      Exception caught with no logging, re-raise, or meaningful handling.
+      Silent failures are the hardest bugs to diagnose in production.
+    example_violation: |
+      except Exception:
+          pass
+
+  # ── Resource Management ──────────────────────────────────────────
+  - id: preflight/python/file-not-closed
+    severity: high
+    description: >
+      File opened with open() outside a `with` statement. If an exception
+      occurs before .close(), the file descriptor leaks.
+    example_violation: "f = open('data.txt')"
+    example_fix: |
+      with open('data.txt') as f:
+          data = f.read()
+
+  - id: preflight/python/db-connection-leak
+    severity: high
+    description: >
+      Database connection or cursor not closed in a finally block or
+      context manager. Leaked connections exhaust the connection pool.
+
+  # ── Security ─────────────────────────────────────────────────────
+  - id: preflight/python/sql-injection
+    severity: high
+    description: >
+      SQL query built with string formatting or concatenation using
+      user-controlled input. Use parameterized queries.
+    example_violation: |
+      cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")
+    example_fix: |
+      cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+
+  - id: preflight/python/shell-injection
+    severity: high
+    description: >
+      subprocess called with shell=True and user-controlled input in the
+      command string. Allows arbitrary command execution.
+    example_violation: |
+      subprocess.run(f"ls {user_path}", shell=True)
+    example_fix: |
+      subprocess.run(["ls", user_path])  # shell=False, args as list
+
+  - id: preflight/python/pickle-untrusted
+    severity: high
+    description: >
+      pickle.loads() called on data from an untrusted source (network,
+      user upload, external storage). Pickle deserializes arbitrary objects
+      and can execute code.
+
+  - id: preflight/python/hardcoded-secret
+    severity: high
+    description: >
+      API key, password, or credential hardcoded in source. Move to
+      environment variables or a secrets manager.
+
+  # ── Type Safety ──────────────────────────────────────────────────
+  - id: preflight/python/mutable-default-arg
+    severity: high
+    description: >
+      Mutable default argument (list, dict, set) in function definition.
+      The same object is shared across all calls — mutations persist
+      between invocations.
+    example_violation: "def add_item(item, results=[]):"
+    example_fix: |
+      def add_item(item, results=None):
+          if results is None:
+              results = []
+
+  - id: preflight/python/unguarded-attribute
+    severity: medium
+    description: >
+      Attribute access on a value that may be None without an explicit
+      None check. Raises AttributeError at runtime.

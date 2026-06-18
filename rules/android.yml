@@ -1,0 +1,148 @@
+version: 1
+platform: android
+
+rules:
+  # ── Memory & Lifecycle ───────────────────────────────────────────
+  - id: preflight/android/context-leak
+    severity: high
+    description: >
+      Activity or View context stored in a static field, singleton, or
+      object that outlives the Activity. This prevents GC and leaks the
+      entire Activity view hierarchy.
+    example_violation: |
+      companion object {
+          var instance: MyActivity? = null  # static Activity reference
+      }
+    example_fix: |
+      # Use ApplicationContext for long-lived objects
+      class MyManager(private val context: Context) {
+          init { require(context == context.applicationContext) }
+      }
+
+  - id: preflight/android/fragment-view-leak
+    severity: high
+    description: >
+      View reference held in a Fragment field beyond onDestroyView.
+      Fragment lifecycle outlives its view — use ViewBinding with nulling
+      in onDestroyView, or access views only within onViewCreated.
+    example_violation: |
+      class MyFragment : Fragment() {
+          private lateinit var button: Button  # survives onDestroyView
+      }
+    example_fix: |
+      private var _binding: FragmentMyBinding? = null
+      private val binding get() = _binding!!
+
+      override fun onDestroyView() {
+          super.onDestroyView()
+          _binding = null
+      }
+
+  - id: preflight/android/broadcast-not-unregistered
+    severity: high
+    description: >
+      BroadcastReceiver registered in onStart/onResume/onCreate without
+      a corresponding unregisterReceiver in the matching lifecycle method.
+      Causes IllegalArgumentException and memory leaks.
+    example_fix: |
+      # Pair registration with lifecycle:
+      # onStart  → onStop
+      # onResume → onPause
+      # onCreate → onDestroy
+
+  - id: preflight/android/wakelock-unreleased
+    severity: high
+    description: >
+      WakeLock.acquire() called without guaranteed release in a finally block.
+      An unreleased WakeLock drains battery indefinitely.
+    example_violation: |
+      wakeLock.acquire()
+      doWork()           # if this throws, release never runs
+      wakeLock.release()
+    example_fix: |
+      wakeLock.acquire()
+      try {
+          doWork()
+      } finally {
+          wakeLock.release()
+      }
+
+  # ── Threading ────────────────────────────────────────────────────
+  - id: preflight/android/main-thread-io
+    severity: high
+    description: >
+      Network or disk I/O performed on the main (UI) thread. This causes
+      ANR dialogs on Android 3.0+ and NetworkOnMainThreadException for
+      network calls. Move to a background thread or coroutine with
+      Dispatchers.IO.
+    patterns:
+      - "new Thread()"
+      - "AsyncTask"         # deprecated but still causes the pattern
+      - "HttpURLConnection" # on main thread
+      - "File(" # direct file access on main thread
+
+  - id: preflight/android/wrong-dispatcher
+    severity: high
+    description: >
+      Blocking I/O operation called inside a coroutine running on
+      Dispatchers.Main. Use withContext(Dispatchers.IO) for database,
+      network, or file operations.
+
+  # ── Security ─────────────────────────────────────────────────────
+  - id: preflight/android/exported-no-permission
+    severity: high
+    description: >
+      Activity, Service, or BroadcastReceiver has android:exported="true"
+      in the manifest without an android:permission guard. Any app on the
+      device can invoke it.
+
+  - id: preflight/android/implicit-intent-internal
+    severity: high
+    description: >
+      Implicit Intent used to start an internal component. Any app can
+      intercept implicit intents. Use explicit intents (with component class)
+      for internal navigation.
+    example_violation: |
+      val intent = Intent("com.myapp.ACTION_DO_WORK")
+      startActivity(intent)  # implicit — interceptable
+    example_fix: |
+      val intent = Intent(this, WorkActivity::class.java)
+      startActivity(intent)
+
+  - id: preflight/android/webview-javascript-file-access
+    severity: high
+    description: >
+      WebView has setAllowFileAccessFromFileURLs(true) or
+      setAllowUniversalAccessFromFileURLs(true) with JavaScript enabled.
+      This allows malicious local files to access cross-origin content.
+
+  - id: preflight/android/hardcoded-secret
+    severity: high
+    description: >
+      API key, secret, or credential hardcoded in source or strings.xml.
+      Rotate immediately and move to a backend proxy or secrets manager.
+    keywords:
+      - api_key
+      - apiKey
+      - secret
+      - password
+      - token
+      - private_key
+
+  # ── Resources ────────────────────────────────────────────────────
+  - id: preflight/android/bitmap-not-recycled
+    severity: medium
+    description: >
+      Bitmap created without a corresponding recycle() call on pre-API 11
+      targets, or without close() on newer APIs. Large Bitmaps held in memory
+      cause OOM crashes.
+
+  - id: preflight/android/cursor-not-closed
+    severity: medium
+    description: >
+      Database Cursor opened without guaranteed close in a finally block
+      or try-with-resources. Leaked cursors exhaust SQLite connection pool.
+    example_fix: |
+      db.query(...).use { cursor ->
+          // cursor auto-closed via Closeable
+      }

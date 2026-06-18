@@ -1,0 +1,132 @@
+version: 1
+platform: ios
+
+rules:
+  # ── Retain Cycles ────────────────────────────────────────────────
+  - id: preflight/ios/retain-cycle-closure
+    severity: high
+    description: >
+      Closure captures self strongly. If self holds the closure, this forms
+      a retain cycle. Use [weak self] or [unowned self].
+    example_violation: |
+      viewModel.onUpdate = {
+          self.tableView.reloadData()  # strong capture
+      }
+    example_fix: |
+      viewModel.onUpdate = { [weak self] in
+          self?.tableView.reloadData()
+      }
+
+  - id: preflight/ios/delegate-strong
+    severity: high
+    description: >
+      Delegate property is not weak. Parent holds child; child holds delegate
+      back to parent — retain cycle. Delegates must be weak.
+    example_violation: "var delegate: UserDelegate?"
+    example_fix: "weak var delegate: UserDelegate?"
+
+  - id: preflight/ios/timer-strong-target
+    severity: high
+    description: >
+      Timer.scheduledTimer(withTimeInterval:target:) holds a strong reference
+      to target. If the owning object is the target, it will never deallocate.
+      Use the block-based API with [weak self] instead.
+    example_violation: |
+      Timer.scheduledTimer(timeInterval: 1.0, target: self,
+                           selector: #selector(tick), userInfo: nil, repeats: true)
+    example_fix: |
+      Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+          self?.tick()
+      }
+
+  # ── Threading ────────────────────────────────────────────────────
+  - id: preflight/ios/ui-off-main-thread
+    severity: high
+    description: >
+      UIKit and SwiftUI updates must happen on the main thread. Calling UI APIs
+      from a background queue causes undefined behavior and crashes.
+    example_violation: |
+      DispatchQueue.global().async {
+          self.label.text = result  # UIKit off main thread
+      }
+    example_fix: |
+      DispatchQueue.global().async {
+          DispatchQueue.main.async {
+              self.label.text = result
+          }
+      }
+
+  - id: preflight/ios/main-actor-missing
+    severity: medium
+    description: >
+      Function updates UI state but is not marked @MainActor. In Swift
+      Concurrency this is not enforced at compile time on non-isolated types.
+
+  # ── Memory Safety ────────────────────────────────────────────────
+  - id: preflight/ios/notification-observer-leak
+    severity: high
+    description: >
+      NotificationCenter.addObserver called without a corresponding
+      removeObserver in deinit. Pre-iOS 9 observers are never released.
+    example_violation: |
+      override func viewDidLoad() {
+          NotificationCenter.default.addObserver(self, selector: #selector(handle),
+                                                 name: .UIApplicationDidBecomeActive,
+                                                 object: nil)
+          # no removeObserver anywhere
+      }
+    example_fix: |
+      deinit {
+          NotificationCenter.default.removeObserver(self)
+      }
+
+  - id: preflight/ios/forced-unwrap
+    severity: high
+    description: >
+      Force unwrap (!) crashes at runtime if the value is nil.
+      Use guard let, if let, or ?? with a safe default.
+    paths_ignore:
+      - "**/*Tests.swift"
+      - "**/*Spec.swift"
+      - "**/Mocks/**"
+
+  # ── SwiftUI ──────────────────────────────────────────────────────
+  - id: preflight/swiftui/observed-not-stateobject
+    severity: high
+    description: >
+      @ObservedObject used for an object created inside this view.
+      The view does not own the object's lifetime — SwiftUI can recreate the
+      view and lose state. Use @StateObject for objects owned by this view.
+    example_violation: |
+      struct ContentView: View {
+          @ObservedObject var vm = UserViewModel()  # view doesn't own lifetime
+      }
+    example_fix: |
+      struct ContentView: View {
+          @StateObject var vm = UserViewModel()
+      }
+
+  - id: preflight/swiftui/state-in-nonview
+    severity: medium
+    description: >
+      @State declared outside a View struct. @State is managed by SwiftUI's
+      rendering engine and only works correctly inside View types.
+
+  # ── Security ─────────────────────────────────────────────────────
+  - id: preflight/ios/sensitive-in-userdefaults
+    severity: high
+    description: >
+      Sensitive data (tokens, passwords, PII) stored in UserDefaults.
+      UserDefaults is unencrypted plist storage. Use the Keychain instead.
+    keywords:
+      - token
+      - password
+      - secret
+      - apiKey
+      - authToken
+
+  - id: preflight/ios/hardcoded-secret
+    severity: high
+    description: >
+      API key, secret, or credential hardcoded in source. Rotate immediately
+      and move to a secrets manager or backend proxy.

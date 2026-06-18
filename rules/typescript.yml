@@ -1,0 +1,109 @@
+version: 1
+stack: typescript
+
+rules:
+  # ── Async / Promises ────────────────────────────────────────────
+  - id: preflight/typescript/unhandled-promise
+    severity: high
+    description: >
+      Promise returned from an async call has no .catch() and is not
+      awaited in a try/catch. Unhandled rejections crash Node processes
+      and silently fail in browsers.
+    example_violation: |
+      fetchUser(id)  // promise not awaited, no .catch()
+    example_fix: |
+      try {
+        const user = await fetchUser(id)
+      } catch (err) {
+        handleError(err)
+      }
+
+  - id: preflight/typescript/floating-promise
+    severity: high
+    description: >
+      async function called without await in a context where the caller
+      needs the result or needs to know about failures. Common in event
+      handlers and useEffect bodies.
+
+  # ── Type Safety ──────────────────────────────────────────────────
+  - id: preflight/typescript/any-cast
+    severity: medium
+    description: >
+      Explicit cast to `any` disables TypeScript's type checker for the
+      affected value. Use `unknown` with a type guard instead.
+    example_violation: "const data = response as any"
+    example_fix: |
+      const data = response as unknown
+      if (isUserData(data)) { /* type guard */ }
+
+  - id: preflight/typescript/non-null-assertion
+    severity: medium
+    description: >
+      Non-null assertion operator (!) used on a value that may be null
+      or undefined at runtime. Use optional chaining (?.) or a null check.
+    example_violation: "document.getElementById('app')!.innerHTML = html"
+    example_fix: |
+      const el = document.getElementById('app')
+      if (el) el.innerHTML = html
+
+  - id: preflight/typescript/loose-equality
+    severity: medium
+    description: >
+      == used instead of ===. JavaScript type coercion produces
+      surprising results: 0 == '0' is true, null == undefined is true.
+
+  # ── React (applied when React imports detected) ──────────────────
+  - id: preflight/typescript/useeffect-missing-deps
+    severity: high
+    description: >
+      useEffect references a variable that is not in its dependency array.
+      The effect will not re-run when that variable changes, causing stale
+      closure bugs.
+
+  - id: preflight/typescript/state-mutation-direct
+    severity: high
+    description: >
+      React state mutated directly instead of via the setter function.
+      React does not detect direct mutations and will not re-render.
+    example_violation: |
+      items.push(newItem)       // direct mutation
+      setItems(items)
+    example_fix: |
+      setItems([...items, newItem])
+
+  # ── Security ─────────────────────────────────────────────────────
+  - id: preflight/typescript/dangerously-set-inner-html
+    severity: high
+    description: >
+      dangerouslySetInnerHTML used with a value that is not explicitly
+      sanitized. If the value contains user input, this is an XSS vector.
+
+  - id: preflight/typescript/hardcoded-secret
+    severity: high
+    description: >
+      API key, token, or credential hardcoded in source. Move to
+      environment variables and ensure .env is in .gitignore.
+    keywords:
+      - apiKey
+      - api_key
+      - secret
+      - password
+      - token
+      - private_key
+
+  # ── Node.js (applied when package.json has no browser field) ─────
+  - id: preflight/typescript/path-traversal
+    severity: high
+    description: >
+      File path constructed from user input without sanitization.
+      An attacker can escape the intended directory with ../sequences.
+
+  - id: preflight/typescript/sql-injection
+    severity: high
+    description: >
+      SQL query built by string concatenation with user-controlled input.
+      Use parameterized queries or an ORM instead.
+    example_violation: |
+      db.query(`SELECT * FROM users WHERE id = ${req.params.id}`)
+    example_fix: |
+      db.query('SELECT * FROM users WHERE id = ?', [req.params.id])
