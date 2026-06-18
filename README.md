@@ -43,11 +43,24 @@ gh pr diff https://github.com/org/repo/pull/123 | python3 preflight.py - --pr ht
 python3 preflight.py changes.diff --platform typescript
 ```
 
-## Setup
+## Installation
+
+**Requirements:** Python 3.9+, an [Anthropic API key](https://console.anthropic.com/settings/keys), and the [GitHub CLI](https://cli.github.com) if you want to post PR comments.
 
 ```bash
+# 1. Clone
+git clone https://github.com/jsingh6/preflight.git
+cd preflight
+
+# 2. Install dependencies
 pip install anthropic pyyaml
-export ANTHROPIC_API_KEY=sk-ant-...
+
+# 3. Add your API key to your shell profile (do this once)
+echo 'export ANTHROPIC_API_KEY=sk-ant-...' >> ~/.zshrc
+source ~/.zshrc
+
+# 4. Verify
+git diff HEAD | python3 preflight.py -
 ```
 
 ## Rule sets
