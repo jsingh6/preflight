@@ -1,5 +1,8 @@
 # Preflight
 
+<img width="1278" height="747" alt="Screenshot 2026-06-19 at 12 42 31 PM" src="https://github.com/user-attachments/assets/f47470cf-3d5f-4da2-9d95-3846ef8c7163" />
+
+
 AI code review that finds real bugs before they ship. Runs two independent passes with Claude, verifies every finding against the actual diff, and posts a PR comment only when it has something worth saying.
 
 ## How it works
