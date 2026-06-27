@@ -12,8 +12,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
+import types
 from pathlib import Path
 
 
@@ -92,6 +94,7 @@ def main() -> None:
 # ── Argument parsing ──────────────────────────────────────────────────────────
 
 def _parse_args() -> argparse.Namespace:
+    from . import __version__
     p = argparse.ArgumentParser(
         prog="preflight",
         description="AI code review — finds real bugs before they ship.",
@@ -104,6 +107,7 @@ def _parse_args() -> argparse.Namespace:
             "  preflight.py --output json       # machine-readable\n"
         ),
     )
+    p.add_argument("--version", action="version", version=f"preflight {__version__}")
     p.add_argument(
         "diff_file",
         nargs="?",
@@ -304,13 +308,117 @@ def _dim(text: str, color: bool) -> str:
 # ── PR comment ───────────────────────────────────────────────────────────────
 
 def _post_pr_comment(pr_url: str, result) -> None:
+    """Post findings as inline review comments; fall back to a single PR comment."""
+    m = re.match(r"https://github\.com/([^/]+)/([^/]+)/pull/(\d+)", pr_url)
+    if not m:
+        _warn(f"cannot parse PR URL: {pr_url} — falling back to regular comment")
+        _post_pr_comment_fallback(pr_url, result)
+        return
+
+    owner, repo, pr_number = m.group(1), m.group(2), m.group(3)
+    head_sha = _get_pr_head_sha(owner, repo, pr_number)
+    if not head_sha:
+        _warn("could not get PR head SHA — falling back to regular comment")
+        _post_pr_comment_fallback(pr_url, result)
+        return
+
+    posted = 0
+    fallback_findings = []
+
+    for finding in result.findings:
+        file_path = finding.get("file", "").strip()
+        line = finding.get("line")
+        if not file_path or not line:
+            fallback_findings.append(finding)
+            continue
+        body = _format_inline_comment(finding)
+        ok = _post_inline_review_comment(owner, repo, pr_number, head_sha, file_path, line, body)
+        if ok:
+            posted += 1
+        else:
+            fallback_findings.append(finding)
+
+    if posted:
+        print(f"preflight: {posted} inline comment(s) posted")
+
+    if fallback_findings:
+        fallback_result = types.SimpleNamespace(
+            findings=fallback_findings,
+            dropped=result.dropped,
+            stats=result.stats,
+        )
+        _post_pr_comment_fallback(pr_url, fallback_result)
+
+
+def _get_pr_head_sha(owner: str, repo: str, pr_number: str) -> str | None:
+    try:
+        proc = subprocess.run(
+            ["gh", "api", f"repos/{owner}/{repo}/pulls/{pr_number}", "--jq", ".head.sha"],
+            capture_output=True, text=True, check=False,
+        )
+        sha = proc.stdout.strip()
+        return sha if sha and proc.returncode == 0 else None
+    except FileNotFoundError:
+        return None
+
+
+def _post_inline_review_comment(
+    owner: str, repo: str, pr_number: str, commit_sha: str,
+    path: str, line: int, body: str,
+) -> bool:
+    try:
+        proc = subprocess.run(
+            [
+                "gh", "api",
+                f"repos/{owner}/{repo}/pulls/{pr_number}/comments",
+                "--method", "POST",
+                "--field", f"body={body}",
+                "--field", f"commit_id={commit_sha}",
+                "--field", f"path={path}",
+                "--field", f"line={int(line)}",
+                "--field", "side=RIGHT",
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        if proc.returncode == 0:
+            return True
+        _warn(f"inline comment failed for {path}:{line} — {proc.stderr.strip()[:120]}")
+        return False
+    except FileNotFoundError:
+        _warn("gh not found — install the GitHub CLI to post PR comments")
+        return False
+
+
+def _format_inline_comment(f: dict) -> str:
+    severity    = f.get("severity", "low").upper()
+    rule_id     = f.get("rule_id", "")
+    explanation = f.get("explanation", "").strip()
+    evidence    = f.get("evidence", "").strip()
+
+    lines = [f"**`{rule_id}` · {severity}**", ""]
+
+    if evidence:
+        ev_short = (evidence[:60] + "…") if len(evidence) > 60 else evidence
+        lines.append(f"Wondering if there could be an issue with `{ev_short}` here?")
+        lines.append("")
+
+    if explanation:
+        lines.append(explanation)
+        lines.append("")
+
+    lines.append("> **Suggestion:** could this be restructured to avoid the problem described above?")
+    lines.append("")
+    lines.append("*Posted by [Preflight](https://github.com/jsingh6/preflight)*")
+
+    return "\n".join(lines)
+
+
+def _post_pr_comment_fallback(pr_url: str, result) -> None:
     body = _format_pr_comment(result)
     try:
         proc = subprocess.run(
             ["gh", "pr", "comment", pr_url, "--body", body],
-            capture_output=True,
-            text=True,
-            check=False,
+            capture_output=True, text=True, check=False,
         )
         if proc.returncode == 0:
             print(f"preflight: comment posted → {proc.stdout.strip()}")
@@ -339,26 +447,27 @@ def _format_pr_comment(result) -> str:
         explanation = f.get("explanation", "").strip()
 
         location = f"`{ffile}:{line}`" if line else f"`{ffile}`"
-        lines.append(f"---")
+        lines.append("---")
         lines.append(f"**{location}** · `{rule_id}` · {severity}")
         lines.append("")
 
-        if explanation:
-            # Open with a question anchored to the evidence, then give the full explanation
+        if evidence:
             ev_short = (evidence[:60] + "…") if len(evidence) > 60 else evidence
             lines.append(f"Wondering if there could be an issue with `{ev_short}` here?")
             lines.append("")
+
+        if explanation:
             lines.append(explanation)
             lines.append("")
-            lines.append(f"> **Suggestion:** could this be restructured to avoid the problem described above?")
 
         if evidence:
-            ev = evidence.replace("\n", "\n  ")
+            lines.append("**Flagged code:**")
+            lines.append("```")
+            lines.append(evidence.replace("\n", "\n  "))
+            lines.append("```")
             lines.append("")
-            lines.append(f"```")
-            lines.append(ev)
-            lines.append(f"```")
 
+        lines.append("> **Suggestion:** could this be restructured to avoid the problem described above?")
         lines.append("")
 
     lines += [
