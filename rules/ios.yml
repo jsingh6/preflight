@@ -130,3 +130,123 @@ rules:
     description: >
       API key, secret, or credential hardcoded in source. Rotate immediately
       and move to a secrets manager or backend proxy.
+
+  # ── Force Unwrap / Cast ──────────────────────────────────────────
+  - id: preflight/ios/force-cast
+    severity: high
+    description: >
+      Force cast (as!) crashes at runtime if the type does not match.
+      Use conditional cast (as?) with a guard or if let instead.
+    example_violation: |
+      let vc = storyboard.instantiateViewController(withIdentifier: "Home") as! HomeViewController
+    example_fix: |
+      guard let vc = storyboard.instantiateViewController(withIdentifier: "Home") as? HomeViewController else { return }
+
+  # ── Swift Concurrency ────────────────────────────────────────────
+  - id: preflight/ios/task-not-stored
+    severity: high
+    description: >
+      Task { } created without storing the handle. The task cannot be
+      cancelled — it will run until completion even after the owning object
+      deallocates, potentially causing use-after-free or unintended side effects.
+    example_violation: |
+      func load() {
+          Task { await self.fetchData() }   // handle discarded
+      }
+    example_fix: |
+      private var loadTask: Task<Void, Never>?
+      func load() {
+          loadTask = Task { await self.fetchData() }
+      }
+      deinit { loadTask?.cancel() }
+
+  - id: preflight/ios/actor-isolation-violation
+    severity: high
+    description: >
+      Actor-isolated property or method accessed from outside the actor without
+      await. This is a data race — Swift 6 will reject it at compile time.
+    example_violation: |
+      actor DataStore { var cache: [String: Data] = [:] }
+      let value = store.cache["key"]    // missing await
+    example_fix: |
+      let value = await store.cache["key"]
+
+  - id: preflight/ios/sendable-violation
+    severity: high
+    description: >
+      Non-Sendable type passed across concurrency boundaries (actor, Task, or
+      detached Task). This is a data race that Swift 6 strict concurrency will
+      flag. Mark the type Sendable or use an actor to protect it.
+    example_violation: |
+      class UserSession { var token: String = "" }   // not Sendable
+      Task { processSession(session) }                // captured across boundary
+    example_fix: |
+      final class UserSession: Sendable { let token: String ... }
+
+  - id: preflight/ios/continuation-resume-count
+    severity: high
+    description: >
+      withCheckedContinuation or withUnsafeContinuation where resume may be
+      called zero times (forgotten in an error branch) or more than once
+      (called in both the success and the error path). Either causes undefined
+      behaviour or a crash.
+    example_violation: |
+      withCheckedContinuation { continuation in
+          fetchData { result, error in
+              if let error { continuation.resume(throwing: error) }
+              continuation.resume(returning: result!)   // called twice on error
+          }
+      }
+    example_fix: |
+      withCheckedThrowingContinuation { continuation in
+          fetchData { result, error in
+              if let error { continuation.resume(throwing: error) } else {
+                  continuation.resume(returning: result!)
+              }
+          }
+      }
+
+  - id: preflight/ios/main-actor-assumed
+    severity: medium
+    description: >
+      Function updates UI state but is not marked @MainActor and is called
+      from an async context. Without @MainActor the call may arrive on a
+      background thread, causing UIKit threading violations.
+    example_violation: |
+      func updateUI() { label.text = "done" }   // not @MainActor
+      Task { await model.load(); updateUI() }    // background thread
+    example_fix: |
+      @MainActor func updateUI() { label.text = "done" }
+
+  # ── Error Handling ────────────────────────────────────────────────
+  - id: preflight/ios/try-question-swallows-error
+    severity: medium
+    description: >
+      try? discards the thrown error entirely. In async or networking code
+      this silently hides failures. Propagate with try or catch and log/handle
+      the specific error.
+    example_violation: |
+      let decoded = try? JSONDecoder().decode(User.self, from: data)
+    example_fix: |
+      do {
+          let decoded = try JSONDecoder().decode(User.self, from: data)
+      } catch {
+          logger.error("Decode failed: \(error)")
+      }
+
+  - id: preflight/ios/escaping-completion-not-called
+    severity: high
+    description: >
+      @escaping completion handler may not be called on all code paths —
+      missing call in an error branch or early return. Callers that rely on
+      the completion to continue will hang indefinitely.
+    example_violation: |
+      func fetch(completion: @escaping (Result<Data, Error>) -> Void) {
+          guard isReachable else { return }   // completion never called
+          session.dataTask(...) { data, _, error in
+              if let error { return }         // completion never called
+              completion(.success(data!))
+          }.resume()
+      }
+    example_fix: |
+      guard isReachable else { completion(.failure(NetworkError.offline)); return }

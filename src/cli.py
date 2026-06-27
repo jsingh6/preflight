@@ -84,7 +84,10 @@ def main() -> None:
         _print_text(result, color=args.color and sys.stdout.isatty())
 
     if args.pr and result.findings:
-        _post_pr_comment(args.pr, result)
+        if _confirm_post(args.pr):
+            _post_pr_comment(args.pr, result)
+        else:
+            print("preflight: comment not posted")
     elif args.pr and not result.findings:
         print("preflight: no findings — skipping PR comment")
 
@@ -303,6 +306,18 @@ def _bold(text: str, color: bool) -> str:
 
 def _dim(text: str, color: bool) -> str:
     return f"{_DIM}{text}{_RESET}" if color else text
+
+
+# ── Human confirmation ────────────────────────────────────────────────────────
+
+def _confirm_post(pr_url: str) -> bool:
+    print(f"\nPost the above findings to {pr_url}? [y/N] ", end="", flush=True)
+    try:
+        answer = input().strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    return answer in ("y", "yes")
 
 
 # ── PR comment ───────────────────────────────────────────────────────────────
